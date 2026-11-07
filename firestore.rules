@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid}/devices/{deviceId} {
+      allow read: if signedInAs(uid);
+      allow create: if signedInAs(uid)
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.label is string
+        && request.resource.data.label.size() > 0
+        && request.resource.data.label.size() <= 40
+        && request.resource.data.sharingEnabled == false;
+      allow update: if signedInAs(uid)
+        && resource.data.ownerUid == uid
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['label', 'sharingEnabled', 'latest', 'lastSeenAt']);
+      allow delete: if signedInAs(uid) && resource.data.ownerUid == uid;
+
+      match /locations/{locationId} {
+        allow read, delete: if signedInAs(uid)
+          && get(/databases/$(database)/documents/users/$(uid)/devices/$(deviceId)).data.ownerUid == uid;
+        allow create: if signedInAs(uid)
+          && get(/databases/$(database)/documents/users/$(uid)/devices/$(deviceId)).data.ownerUid == uid
+          && get(/databases/$(database)/documents/users/$(uid)/devices/$(deviceId)).data.sharingEnabled == true
+          && request.resource.data.latitude is number
+          && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+          && request.resource.data.longitude is number
+          && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180
+          && request.resource.data.accuracy is number
+          && request.resource.data.timestamp is timestamp;
+        allow update: if false;
+      }
+    }
+  }
+}
